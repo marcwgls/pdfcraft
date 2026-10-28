@@ -965,3 +965,49 @@ fn right_click_canvas_context_menu_disables_print_when_restricted() {
     let print_row = h.get_by_label_contains("Print…");
     assert!(print_row.accesskit_node().is_disabled());
 }
+
+/// #5177: in side-by-side comparison, right-clicking the old pane's context menu prints the old
+/// document rather than the active new document.
+#[test]
+fn right_click_compare_old_pane_context_menu_prints_that_document() {
+    use egui::{Event, Modifiers, PointerButton};
+    let mut h = harness();
+    let old_bytes = h.state().session.create_blank(200.0, 300.0, 3).unwrap();
+    let new_bytes = h.state().session.create_blank(200.0, 300.0, 1).unwrap();
+    h.state_mut().open_bytes("old.pdf", None, old_bytes.as_ref().clone()).unwrap();
+    h.state_mut().open_bytes("new.pdf", None, new_bytes.as_ref().clone()).unwrap();
+    h.run_steps(3);
+    let old_index = h.state().views.len() - 2;
+    let new_index = h.state().views.len() - 1;
+    h.state_mut().views[old_index].select_pages(&[0, 2]);
+    h.state_mut().compare_old = Some(h.state().views[old_index].id);
+    h.state_mut().run_compare();
+    h.run_steps(3);
+    assert_eq!(h.state().active, Some(new_index));
+    assert!(h.state().compare.as_ref().is_some_and(|c| c.side_by_side));
+    let at = h.state().views[old_index].viewport_rect().center();
+    h.event(Event::PointerMoved(at));
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+    h.get_by_label_contains("Print…").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    assert_eq!(h.state().active, Some(new_index), "side-by-side comparison stays active");
+    assert_eq!(h.state().print_draft.selected, vec![0, 2], "seeded from the old pane");
+    h.get_by_label("Selected pages (2)");
+    h.get_by_label("Sheet 1 of 2");
+    let out = std::env::temp_dir().join(format!("pdfcraft-print-compare-old-{}.pdf", std::process::id()));
+    h.state_mut().save_override = Some(out.to_string_lossy().into_owned());
+    h.state_mut().print_draft.printer = None;
+    h.run_steps(1);
+    h.get_by_label("Save as PDF").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, None);
+    let saved = std::fs::read(&out).expect("saved");
+    let doc = pdfcraft_cos::Document::open(std::sync::Arc::new(saved)).unwrap();
+    assert_eq!(pdfcraft_model::pages(&doc).len(), 2);
+    let _ = std::fs::remove_file(out);
+}

@@ -70,7 +70,10 @@ impl PdfCraftApp {
         }
         for r in out.requests {
             match r {
-                Request::Print => self.open_print(),
+                Request::Print => match view {
+                    Some(i) => self.open_print_for(i),
+                    None => self.open_print(),
+                },
                 Request::GoToPage(p) => {
                     if let Some(i) = view {
                         self.views[i].go_to_page(p);

@@ -93,6 +93,9 @@ fn dialogs(app: &mut PdfCraftApp, ctx: &egui::Context) {
     if app.dialog != Some(Dialog::FieldTable) {
         app.field_table_draft = None;
     }
+    if app.dialog != Some(Dialog::Print) {
+        app.print_tasks.target = None;
+    }
     // A movable window, not this modal: the page under it shows the table as it changes.
     if app.dialog == Some(Dialog::FieldTable) {
         crate::field_table_ui::show(app, ctx);
@@ -1286,7 +1289,7 @@ fn dialog_overwrite_changed(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut 
 /// `Dialog::Print` content. Returns `false` when it has its own buttons and no footer is wanted.
 fn dialog_print(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> bool {
     let t = Tokens::get(ui.ctx());
-    let Some((i, id)) = app.active_ids() else {
+    let Some((i, id)) = app.print_target() else {
         req.close = true;
         return false;
     };

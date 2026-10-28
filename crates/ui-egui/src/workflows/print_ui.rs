@@ -42,6 +42,8 @@ pub fn system_printers() -> PrinterSource {
 /// spooled, oldest first.
 #[derive(Default)]
 pub(crate) struct PrintTasks {
+    /// The document the Print dialog was opened for (`None` falls back to the active tab).
+    pub(crate) target: Option<pdfcraft_engine::DocId>,
     #[cfg(not(target_arch = "wasm32"))]
     printers: Option<std::sync::mpsc::Receiver<Vec<spool::Printer>>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -134,6 +136,14 @@ impl Drop for WakeOnExit {
 impl PdfCraftApp {
     pub fn open_print(&mut self) {
         let Some((i, _)) = self.active_ids() else { return };
+        self.open_print_for(i);
+    }
+
+    pub(crate) fn open_print_for(&mut self, index: usize) {
+        let Some(view) = self.views.get(index) else { return };
+        let id = view.id;
+        let current = view.current;
+        let selected: Vec<usize> = view.selected.iter().copied().collect();
         let (printers, printers_loading) = match self.printer_source.clone() {
             // The list from the last time the dialog opened, until the fresh one arrives.
             #[cfg(not(target_arch = "wasm32"))]
@@ -144,8 +154,6 @@ impl PdfCraftApp {
             _ => (listed_printers(), false),
         };
         let default = default_printer(&printers);
-        let current = self.views[i].current;
-        let selected: Vec<usize> = self.views[i].selected.iter().copied().collect();
         let keep = std::mem::take(&mut self.print_draft);
         // The printer picked last time, Save as PDF included, while it is still listed (#3537).
         let picked = keep.printer_picked && offered(keep.printer.as_deref(), &printers);
@@ -171,7 +179,18 @@ impl PdfCraftApp {
             which,
             ..keep
         };
+        self.print_tasks.target = Some(id);
         self.dialog = Some(crate::Dialog::Print);
+    }
+
+    /// The view and document the Print dialog acts on: the one it was opened for while still
+    /// open, otherwise the active tab.
+    pub(crate) fn print_target(&self) -> Option<(usize, pdfcraft_engine::DocId)> {
+        self.print_tasks
+            .target
+            .filter(|_| self.dialog == Some(crate::Dialog::Print))
+            .and_then(|id| self.views.iter().position(|v| v.id == id).map(|i| (i, id)))
+            .or_else(|| self.active_ids())
     }
 
     /// Label printing: find each printed page's printed area (a quick low-resolution render, as
@@ -388,11 +407,11 @@ impl PdfCraftApp {
     /// a preset path returns `true` once the save picker is showing; the file is written on a
     /// later frame, when the user has chosen where.
     pub fn print_now(&mut self) -> bool {
+        let Some((_, id)) = self.print_target() else { return false };
         // What's typed in a form field is part of what's printed (#166).
-        if !self.commit_form_typing() {
+        if !self.commit_typing_in(id) {
             return false;
         }
-        let Some((_, id)) = self.active_ids() else { return false };
         let Some(doc) = self.session.get(id) else { return false };
         let labels: Vec<String> = doc.info.pages.iter().map(|p| p.label.clone()).collect();
         let settings = match self.print_draft.settings(doc.info.pages.len(), &labels) {

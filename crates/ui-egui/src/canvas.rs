@@ -3401,7 +3401,7 @@ fn apply_frame_requests(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui, 
         avail,
     } = requests;
     if open_print {
-        app.open_print();
+        app.open_print_for(index);
     }
     if let Some((page, at)) = app.views[index].comments.attach_at.take() {
         app.attach_file_comment(page, at);
