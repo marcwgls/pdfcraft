@@ -913,3 +913,55 @@ fn a_booklet_decides_two_sided_itself() {
     assert!(h.query_by_role_and_label(Role::ComboBox, "Two-sided:").is_some());
     assert_eq!(h.state().print_draft.job("x").duplex, Some(Duplex::LongEdge), "back to the choice");
 }
+
+/// #5177: right-clicking the canvas includes Print… in the context menu and opens the Print dialog.
+#[test]
+fn right_click_canvas_context_menu_includes_print() {
+    use egui::{Event, Modifiers, PointerButton};
+    let mut h = harness();
+    let at = egui::pos2(400.0, 400.0);
+    h.event(Event::PointerMoved(at));
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+    assert_ne!(h.state().dialog, Some(Dialog::Print));
+    let print_row = h.get_by_label_contains("Print…");
+    print_row.click();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+}
+
+/// #5177: on a print-restricted document, the canvas context menu item is disabled.
+#[test]
+fn right_click_canvas_context_menu_disables_print_when_restricted() {
+    use egui::{Event, Modifiers, PointerButton};
+    let mut doc = pdfcraft_cos::Document::open(std::sync::Arc::new(include_bytes!("../data/form.pdf").to_vec())).unwrap();
+    doc.set_encryption(&pdfcraft_cos::NewEncryption {
+        algorithm: pdfcraft_cos::Algorithm::Aes256,
+        user_password: "",
+        owner_password: "owner",
+        permissions: -1 ^ 0b100,
+        encrypt_metadata: true,
+        seed: [3; 32],
+    })
+    .unwrap();
+    let bytes = pdfcraft_cos::write_full(&doc, &Default::default()).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(move |_| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.open_bytes("restricted.pdf", None, bytes).unwrap();
+        app
+    });
+    h.run_steps(4);
+    let at = egui::pos2(400.0, 400.0);
+    h.event(Event::PointerMoved(at));
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+    let print_row = h.get_by_label_contains("Print…");
+    assert!(print_row.accesskit_node().is_disabled());
+}
