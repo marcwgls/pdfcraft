@@ -44,6 +44,9 @@ pub fn system_printers() -> PrinterSource {
 pub(crate) struct PrintTasks {
     /// The document the Print dialog was opened for (`None` falls back to the active tab).
     pub(crate) target: Option<pdfcraft_engine::DocId>,
+    /// Documents whose scripts asked to print while `Dialog::Print` was already open, opened in
+    /// turn after the dialog closes.
+    pub(crate) deferred: std::collections::VecDeque<pdfcraft_engine::DocId>,
     #[cfg(not(target_arch = "wasm32"))]
     printers: Option<std::sync::mpsc::Receiver<Vec<spool::Printer>>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -134,11 +137,14 @@ impl Drop for WakeOnExit {
 }
 
 impl PdfCraftApp {
+    /// Opens the Print dialog for the active document.
     pub fn open_print(&mut self) {
         let Some((i, _)) = self.active_ids() else { return };
         self.open_print_for(i);
     }
 
+    /// Opens the Print dialog for the document at `index`, seeding its page selection and
+    /// keeping `index`'s document as the print target while the dialog remains open.
     pub(crate) fn open_print_for(&mut self, index: usize) {
         let Some(view) = self.views.get(index) else { return };
         let id = view.id;
@@ -180,7 +186,21 @@ impl PdfCraftApp {
             ..keep
         };
         self.print_tasks.target = Some(id);
+        self.print_tasks.deferred.retain(|&d| d != id);
         self.dialog = Some(crate::Dialog::Print);
+    }
+
+    /// Opens the next deferred print request once no modal dialog is open.
+    pub(crate) fn open_next_deferred_print(&mut self) {
+        if self.dialog.is_some() {
+            return;
+        }
+        while let Some(id) = self.print_tasks.deferred.pop_front() {
+            if let Some(i) = self.views.iter().position(|v| v.id == id) {
+                self.open_print_for(i);
+                break;
+            }
+        }
     }
 
     /// The view and document the Print dialog acts on: the one it was opened for while still

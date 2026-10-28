@@ -71,8 +71,14 @@ impl PdfCraftApp {
         for r in out.requests {
             match r {
                 Request::Print => match view {
+                    Some(_) if self.dialog == Some(crate::Dialog::Print) => {
+                        if self.print_target().map(|(_, t)| t) != Some(id) && !self.print_tasks.deferred.contains(&id) {
+                            self.print_tasks.deferred.push_back(id);
+                        }
+                    }
                     Some(i) => self.open_print_for(i),
-                    None => self.open_print(),
+                    None if self.dialog != Some(crate::Dialog::Print) => self.open_print(),
+                    None => {}
                 },
                 Request::GoToPage(p) => {
                     if let Some(i) = view {

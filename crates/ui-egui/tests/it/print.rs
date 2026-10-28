@@ -1011,3 +1011,61 @@ fn right_click_compare_old_pane_context_menu_prints_that_document() {
     assert_eq!(pdfcraft_model::pages(&doc).len(), 2);
     let _ = std::fs::remove_file(out);
 }
+
+/// Closing the document that `Dialog::Print` was opened for clears the target and closes the
+/// dialog so it cannot fall back to printing a different open tab.
+#[test]
+fn closing_print_target_tab_closes_print_dialog() {
+    use pdfcraft_engine::js::{JsOutput, Request};
+    let mut h = harness();
+    let other = h.state().session.create_blank(200.0, 300.0, 3).unwrap();
+    h.state_mut().open_bytes("other.pdf", None, other.as_ref().clone()).unwrap();
+    h.run_steps(2);
+    let first_index = 0;
+    let second_index = 1;
+    let first_id = h.state().views[first_index].id;
+    h.state_mut().views[first_index].select_pages(&[0, 1]);
+    h.state_mut().handle_js(first_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.state_mut().close_tab(first_index);
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, None);
+    assert_eq!(h.state().views.len(), 1);
+    assert_eq!(h.state().active, Some(second_index - 1));
+}
+
+/// A background JavaScript `Request::Print` arriving while `Dialog::Print` is already open is
+/// deferred until the open dialog closes, preserving the open dialog's target and page state.
+#[test]
+fn background_js_print_request_defers_until_open_print_dialog_closes() {
+    use pdfcraft_engine::js::{JsOutput, Request};
+    let mut h = harness();
+    let bg_bytes = h.state().session.create_blank(200.0, 300.0, 3).unwrap();
+    let fg_bytes = h.state().session.create_blank(200.0, 300.0, 4).unwrap();
+    h.state_mut().open_bytes("bg.pdf", None, bg_bytes.as_ref().clone()).unwrap();
+    h.state_mut().open_bytes("fg.pdf", None, fg_bytes.as_ref().clone()).unwrap();
+    h.run_steps(2);
+    let bg_index = h.state().views.len() - 2;
+    let fg_index = h.state().views.len() - 1;
+    let bg_id = h.state().views[bg_index].id;
+    h.state_mut().views[bg_index].select_pages(&[2]);
+    h.state_mut().views[fg_index].select_pages(&[0, 3]);
+    h.state_mut().open_print();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    assert_eq!(h.state().print_draft.selected, vec![0, 3]);
+
+    // Background script asks to print while fg's Print dialog is open.
+    h.state_mut().handle_js(bg_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    assert_eq!(h.state().print_draft.selected, vec![0, 3], "open dialog state is preserved");
+
+    // Closing fg's Print dialog promotes the deferred background request.
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    assert_eq!(h.state().print_draft.selected, vec![2], "deferred background print opens next");
+    h.get_by_label("Selected pages (1)");
+}

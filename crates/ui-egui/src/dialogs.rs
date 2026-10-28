@@ -95,6 +95,7 @@ fn dialogs(app: &mut PdfCraftApp, ctx: &egui::Context) {
     }
     if app.dialog != Some(Dialog::Print) {
         app.print_tasks.target = None;
+        app.open_next_deferred_print();
     }
     // A movable window, not this modal: the page under it shows the table as it changes.
     if app.dialog == Some(Dialog::FieldTable) {
@@ -1845,6 +1846,10 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
         app.custom_draft = None;
         app.bulk_field_props = None;
         app.unmarked_page = Default::default();
+        if dialog == Dialog::Print && !replaces {
+            app.print_tasks.target = None;
+            app.open_next_deferred_print();
+        }
     } else {
         app.dialog = Some(req.next.unwrap_or(dialog));
     }

@@ -1936,6 +1936,7 @@ fn cancel_on_escape(ctx: &egui::Context, view: &mut DocView, ptr: &PagePointer) 
     }
 }
 
+/// Draws the visible pages inside the scroll viewport and collects their interaction outputs.
 fn draw_pages(
     ui: &mut egui::Ui,
     viewport: Rect,
