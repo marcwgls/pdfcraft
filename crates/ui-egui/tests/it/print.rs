@@ -1097,3 +1097,74 @@ fn print_dialog_header_collapses_whitespace_and_shows_full_title_on_hover() {
     h.run_steps(30);
     h.get_by_label("Print — Line 1\nLine 2\nLine 3.pdf");
 }
+
+/// Documents with print restrictions do not open the Print dialog, and deferred requests skip them.
+#[test]
+fn print_restricted_documents_do_not_open_print_and_are_skipped_in_deferred_queue() {
+    use pdfcraft_engine::js::{JsOutput, Request};
+
+    let plain = pdfcraft_engine::Session::new().create_blank(200.0, 300.0, 1).unwrap().as_ref().clone();
+    let mut restricted_doc = pdfcraft_cos::Document::open(std::sync::Arc::new(plain)).unwrap();
+    restricted_doc
+        .set_encryption(&pdfcraft_cos::NewEncryption {
+            algorithm: pdfcraft_cos::Algorithm::Aes256,
+            user_password: "",
+            owner_password: "owner",
+            permissions: -1 ^ 0b100,
+            encrypt_metadata: true,
+            seed: [4; 32],
+        })
+        .unwrap();
+    let restricted_bytes = pdfcraft_cos::write_full(&restricted_doc, &Default::default()).unwrap();
+
+    let mut h = harness();
+    let allowed_bytes = h.state().session.create_blank(200.0, 300.0, 1).unwrap();
+    h.state_mut().open_bytes("restricted.pdf", None, restricted_bytes).unwrap();
+    h.state_mut().open_bytes("allowed.pdf", None, allowed_bytes.as_ref().clone()).unwrap();
+    h.run_steps(2);
+
+    let restricted_idx = h.state().views.len() - 2;
+    let allowed_idx = h.state().views.len() - 1;
+    let restricted_id = h.state().views[restricted_idx].id;
+    let allowed_id = h.state().views[allowed_idx].id;
+
+    assert!(!h.state().session.get(restricted_id).unwrap().allows_printing());
+    assert!(h.state().session.get(allowed_id).unwrap().allows_printing());
+
+    // Direct open_print on an active print-restricted document must early-exit.
+    h.state_mut().active = Some(restricted_idx);
+    h.state_mut().open_print();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, None, "active restricted document does not open Print dialog");
+
+    // Non-active script print request on a print-restricted document must also early-exit.
+    h.state_mut().active = Some(allowed_idx);
+    h.state_mut().handle_js(restricted_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, None, "non-active restricted document does not open Print dialog");
+
+    // Open Print dialog for form.pdf (tab 0).
+    h.state_mut().active = Some(0);
+    h.state_mut().open_print();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — form.pdf");
+
+    // Queue deferred print requests: first restricted, then allowed.
+    h.state_mut().handle_js(restricted_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
+    h.state_mut().handle_js(allowed_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — form.pdf");
+
+    // Closing the initial dialog skips restricted_id and opens allowed_id.
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — allowed.pdf");
+
+    // Closing allowed_id leaves no remaining deferred print dialogs.
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, None);
+}

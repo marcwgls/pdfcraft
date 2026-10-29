@@ -145,9 +145,16 @@ impl PdfCraftApp {
 
     /// Opens the Print dialog for the document at `index`, seeding its page selection and
     /// keeping `index`'s document as the print target while the dialog remains open.
+    ///
+    /// Returns early without opening the dialog if the document cannot be found or its
+    /// permissions disallow printing.
     pub(crate) fn open_print_for(&mut self, index: usize) {
         let Some(view) = self.views.get(index) else { return };
         let id = view.id;
+        let Some(doc) = self.session.get(id) else { return };
+        if !doc.allows_printing() {
+            return;
+        }
         let current = view.current;
         let selected: Vec<usize> = view.selected.iter().copied().collect();
         let (printers, printers_loading) = match self.printer_source.clone() {
@@ -190,7 +197,8 @@ impl PdfCraftApp {
         self.dialog = Some(crate::Dialog::Print);
     }
 
-    /// Opens the next deferred print request once no modal dialog is open.
+    /// Opens the next deferred print request once no modal dialog is open, advancing past
+    /// requests whose documents were closed or disallow printing.
     pub(crate) fn open_next_deferred_print(&mut self) {
         if self.dialog.is_some() {
             return;
@@ -198,7 +206,9 @@ impl PdfCraftApp {
         while let Some(id) = self.print_tasks.deferred.pop_front() {
             if let Some(i) = self.views.iter().position(|v| v.id == id) {
                 self.open_print_for(i);
-                break;
+                if self.dialog == Some(crate::Dialog::Print) {
+                    break;
+                }
             }
         }
     }
