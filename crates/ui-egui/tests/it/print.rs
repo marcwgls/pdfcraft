@@ -1080,3 +1080,20 @@ fn background_js_print_request_defers_until_open_print_dialog_closes() {
     assert_eq!(h.state().print_draft.selected, vec![2], "deferred background print opens next");
     h.get_by_label("Selected pages (1)");
 }
+
+/// The Print dialog header collapses multiline document titles onto a single line and shows
+/// the full title on hover so tall titles cannot push dialog buttons off screen.
+#[test]
+fn print_dialog_header_collapses_whitespace_and_shows_full_title_on_hover() {
+    let mut h = harness();
+    let bytes = h.state().session.create_blank(200.0, 300.0, 1).unwrap();
+    h.state_mut().open_bytes("Line 1\nLine 2\nLine 3.pdf", None, bytes.as_ref().clone()).unwrap();
+    h.run_steps(2);
+    h.state_mut().open_print();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Print));
+    let header = h.get_by_label("Print — Line 1 Line 2 Line 3.pdf");
+    header.hover();
+    h.run_steps(30);
+    h.get_by_label("Print — Line 1\nLine 2\nLine 3.pdf");
+}

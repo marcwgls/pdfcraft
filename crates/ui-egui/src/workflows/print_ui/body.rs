@@ -91,8 +91,9 @@ pub(crate) fn body(
     thumb: &mut dyn FnMut(usize) -> Option<egui::TextureId>,
 ) -> (bool, bool) {
     ui.set_width(820.0);
-    let title = if doc_label.is_empty() { tl!("Print").to_string() } else { format!("{} — {doc_label}", tl!("Print")) };
-    ui.label(egui::RichText::new(title).font(theme::semibold(18.0)));
+    let full = if doc_label.is_empty() { tl!("Print").to_string() } else { format!("{} — {doc_label}", tl!("Print")) };
+    let single_line = full.split_whitespace().collect::<Vec<_>>().join(" ");
+    ui.add(egui::Label::new(egui::RichText::new(single_line).font(theme::semibold(18.0))).truncate()).on_hover_text(full);
     ui.add_space(8.0);
     let settings = d.settings(sizes.len(), labels);
     let sheets = settings.as_ref().ok().and_then(|s| print::layout(sizes, s).ok()).unwrap_or_default();
