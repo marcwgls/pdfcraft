@@ -1294,6 +1294,7 @@ fn dialog_print(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> 
         req.close = true;
         return false;
     };
+    let doc_label = crate::canvas::tab_label(app, i).unwrap_or_else(|| app.session.get(id).map(|d| d.display_name()).unwrap_or_default());
     if app.print_draft.handling == crate::print_ui::Handling::Label {
         app.read_label_crops(id);
     }
@@ -1310,7 +1311,7 @@ fn dialog_print(ui: &mut egui::Ui, app: &mut PdfCraftApp, req: &mut Pending) -> 
     let view = &mut app.views[i];
     view.set_print_grayscale(app.print_draft.grayscale);
     view.queue_print_previews(&rasters);
-    let (go, cancel) = crate::print_ui::body(ui, &mut app.print_draft, &t, &sizes, &labels, &mut |p| {
+    let (go, cancel) = crate::print_ui::body(ui, &mut app.print_draft, &t, &doc_label, &sizes, &labels, &mut |p| {
         view.need_thumbnail(p, true);
         view.page_preview(p)
     });

@@ -926,11 +926,14 @@ fn right_click_canvas_context_menu_includes_print() {
         h.run_steps(1);
     }
     h.run_steps(2);
+    h.ctx.set_os(egui::os::OperatingSystem::Windows);
     assert_ne!(h.state().dialog, Some(Dialog::Print));
     let print_row = h.get_by_label_contains("Print…");
+    assert!(print_row.accesskit_node().label().unwrap_or_default().contains("Ctrl+P"));
     print_row.click();
     h.run_steps(2);
     assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — form.pdf");
 }
 
 /// #5177: on a print-restricted document, the canvas context menu item is disabled.
@@ -992,9 +995,14 @@ fn right_click_compare_old_pane_context_menu_prints_that_document() {
         h.run_steps(1);
     }
     h.run_steps(2);
-    h.get_by_label_contains("Print…").click();
+    h.ctx.set_os(egui::os::OperatingSystem::Windows);
+    let print_row = h.get_by_label_contains("Print…");
+    assert!(!print_row.accesskit_node().label().unwrap_or_default().contains("Ctrl+P"));
+    assert!(!print_row.accesskit_node().label().unwrap_or_default().contains("Command+P"));
+    print_row.click();
     h.run_steps(3);
     assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — old.pdf");
     assert_eq!(h.state().active, Some(new_index), "side-by-side comparison stays active");
     assert_eq!(h.state().print_draft.selected, vec![0, 2], "seeded from the old pane");
     h.get_by_label("Selected pages (2)");
@@ -1054,18 +1062,21 @@ fn background_js_print_request_defers_until_open_print_dialog_closes() {
     h.state_mut().open_print();
     h.run_steps(2);
     assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — fg.pdf");
     assert_eq!(h.state().print_draft.selected, vec![0, 3]);
 
     // Background script asks to print while fg's Print dialog is open.
     h.state_mut().handle_js(bg_id, JsOutput { requests: vec![Request::Print], ..Default::default() });
     h.run_steps(2);
     assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — fg.pdf");
     assert_eq!(h.state().print_draft.selected, vec![0, 3], "open dialog state is preserved");
 
     // Closing fg's Print dialog promotes the deferred background request.
     h.get_by_label("Cancel").click();
     h.run_steps(3);
     assert_eq!(h.state().dialog, Some(Dialog::Print));
+    h.get_by_label("Print — bg.pdf");
     assert_eq!(h.state().print_draft.selected, vec![2], "deferred background print opens next");
     h.get_by_label("Selected pages (1)");
 }

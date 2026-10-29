@@ -858,6 +858,7 @@ struct PageEnv<'a> {
     hand: bool,
     info: &'a DocInfo,
     initials: &'a Option<crate::fill_sign::SavedSig>,
+    is_active: bool,
     key_scroll: f32,
     middle_gesture: bool,
     modal: bool,
@@ -1963,6 +1964,7 @@ fn draw_pages(
         glide,
         hand,
         info,
+        is_active,
         key_scroll,
         middle_gesture,
         modal,
@@ -2207,8 +2209,12 @@ fn draw_pages(
                 copy_selected = true;
                 ui.close();
             }
-            let print_key = crate::commands::shortcut_label(ui.ctx(), crate::commands::PRINT);
-            if ui.add_enabled(can_print, egui::Button::new(tl!("Print…")).shortcut_text(print_key)).clicked() {
+            let mut print_btn = egui::Button::new(tl!("Print…"));
+            if is_active {
+                let print_key = crate::commands::shortcut_label(ui.ctx(), crate::commands::PRINT);
+                print_btn = print_btn.shortcut_text(print_key);
+            }
+            if ui.add_enabled(can_print, print_btn).clicked() {
                 open_print = true;
                 ui.close();
             }
@@ -3183,6 +3189,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
 
     scroll = refine_goto_point(scroll, view, &ScrollGeometry { rects: &rects, y_shift, content_w, content_h, avail, middle_gesture, hand });
     let selection_wheel = view.selection_drag && navigation_enabled && unobstructed && !single_paging && ui.rect_contains_pointer(avail);
+    let is_active = app.active == Some(index);
     let env = PageEnv {
         added: &added,
         allowed,
@@ -3212,6 +3219,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
         hand,
         info,
         initials: &initials,
+        is_active,
         key_scroll,
         middle_gesture,
         modal,
